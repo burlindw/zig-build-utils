@@ -17,8 +17,8 @@ pub fn packageReleaseBinaries(b: *std.Build, compile_steps: []*std.Build.Step.Co
         const binary_name = switch (binary.kind) {
             .exe => b.fmt("{s}{s}", .{ binary.name, target.exeFileExt() }),
             .lib => switch (binary.linkage.?) {
-                .static => b.fmt("{s}{s}", .{ binary.name, target.staticLibSuffix() }),
-                .dynamic => b.fmt("{s}{s}", .{ binary.name, target.dynamicLibSuffix() }),
+                .static => b.fmt("{s}{s}{s}", .{ target.libPrefix(), binary.name, target.staticLibSuffix() }),
+                .dynamic => b.fmt("{s}{s}{s}", .{ target.libPrefix(), binary.name, target.dynamicLibSuffix() }),
             },
             else => quit("Binaries of type '{s}' are unsupported", .{@tagName(binary.kind)}),
         };
