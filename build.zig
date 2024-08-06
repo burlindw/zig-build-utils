@@ -118,7 +118,7 @@ pub fn getMinimumZigVersion(b: *std.Build) std.SemanticVersion {
     var ast = Ast.parse(b.allocator, content, .zon) catch @panic("OOM");
     defer ast.deinit(b.allocator);
 
-    return getManifestVersionField(b, "minimum_zig_version");
+    return getManifestVersionField(b, ast, "minimum_zig_version");
 }
 
 pub fn getProjectVersion(b: *std.Build) std.SemanticVersion {
@@ -128,7 +128,7 @@ pub fn getProjectVersion(b: *std.Build) std.SemanticVersion {
     var ast = Ast.parse(b.allocator, content, .zon) catch @panic("OOM");
     defer ast.deinit(b.allocator);
 
-    return getManifestVersionField(b, "version");
+    return getManifestVersionField(b, ast, "version");
 }
 
 fn loadManifestFile(b: *std.Build) [:0]const u8 {
