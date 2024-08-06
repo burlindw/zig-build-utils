@@ -22,7 +22,7 @@ const utils = @import("build-utils");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const version = getBuildVersion(b);
+    const version = utils.getBuildVersion(b);
 
     const exe = b.addExecutable(.{
         .name = "your-exe-name",
