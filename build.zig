@@ -60,20 +60,32 @@ pub fn getBuildVersion(b: *std.Build) std.SemanticVersion {
 
     const manifest_version = getProjectVersion(b);
     const build_root = b.pathFromRoot(".");
-    const ws = " \t\r\n";
+    const ws = &std.ascii.whitespace;
 
     var code: u8 = undefined;
-    const untrimmed = b.runAllowFail(&.{ "git", "-C", build_root, "describe", "--match", "*.*.*", "--tags" }, &code, .Ignore) catch |err| switch (err) {
+    const untrimmed = b.runAllowFail(
+        &.{ "git", "-C", build_root, "describe", "--match", "*.*.*", "--tags" },
+        &code,
+        .Ignore,
+    ) catch |err| switch (err) {
         error.OutOfMemory => @panic("OOM"),
         error.ExitCodeFailure => {
-            const height = mem.trim(u8, b.run(&.{ "git", "-C", build_root, "rev-list", "--count", "HEAD" }), ws);
-            const commit = mem.trim(u8, b.run(&.{ "git", "-C", build_root, "rev-parse", "--short", "HEAD" }), ws);
+            const height = b.runAllowFail(
+                &.{ "git", "-C", build_root, "rev-list", "--count", "HEAD" },
+                &code,
+                .Ignore,
+            ) catch return std.SemanticVersion{ .major = 0, .minor = 0, .patch = 0 };
+            const commit = b.runAllowFail(
+                &.{ "git", "-C", build_root, "rev-parse", "--short", "HEAD" },
+                &code,
+                .Ignore,
+            ) catch return std.SemanticVersion{ .major = 0, .minor = 0, .patch = 0 };
             return std.SemanticVersion{
                 .major = manifest_version.major,
                 .minor = manifest_version.minor,
                 .patch = manifest_version.patch,
-                .pre = b.fmt("dev.{s}", .{height}),
-                .build = commit,
+                .pre = b.fmt("dev.{s}", .{mem.trim(u8, height, ws)}),
+                .build = mem.trim(u8, commit, ws),
             };
         },
         else => quit("'git describe' failed ({s})\n", .{@errorName(err)}),
@@ -137,7 +149,13 @@ fn loadManifestFile(b: *std.Build) [:0]const u8 {
     };
     defer file.close();
 
-    return file.readToEndAllocOptions(b.allocator, manifest_max_size, null, @alignOf(u8), 0) catch |err| switch (err) {
+    return file.readToEndAllocOptions(
+        b.allocator,
+        manifest_max_size,
+        null,
+        @alignOf(u8),
+        0,
+    ) catch |err| switch (err) {
         error.OutOfMemory => @panic("OOM"),
         else => quit("Failed to read contents from {s} ({s})", .{ manifest_filename, @errorName(err) }),
     };
@@ -184,9 +202,3 @@ fn quit(comptime format: []const u8, args: anytype) noreturn {
 }
 
 pub fn build(_: *std.Build) void {}
-
-comptime {
-    _ = getBuildVersion;
-    _ = getProjectVersion;
-    _ = packageReleaseBinaries;
-}
