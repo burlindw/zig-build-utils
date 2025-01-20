@@ -22,16 +22,25 @@ const utils = @import("build-utils");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    // Get the project version using a combination of the 'build.zig.zon'
+    // manifest file, the git history, and git tags.
     const version = utils.getBuildVersion(b);
 
     const exe = b.addExecutable(.{
-        .name = "your-exe-name",
+        .name = "example",
         .target = target,
         .optimize = optimize,
         .version = version,
         .root_source_file = b.path("src/main.zig"),
     });
     b.installArtifact(exe);
+
+    // Compress the binary (and any associated pdb, h, or lib files) into
+    // a zip file or tarball (depending on the target) and install it in the
+    // prefix directory. The subdirectory within the prefix directory and
+    // the layout within the archive are both configurable.
+    utils.installArchivedArtifact(exe, .{});
 }
 ```
 

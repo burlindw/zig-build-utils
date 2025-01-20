@@ -1,54 +1,65 @@
 const std = @import("std");
 
 const Ast = std.zig.Ast;
+const Compile = std.Build.Step.Compile;
+const LazyPath = std.Build.LazyPath;
 const mem = std.mem;
 
 const manifest_filename = "build.zig.zon";
 const manifest_max_size = 10 * 1024 * 1024;
 
-pub fn packageReleaseBinaries(b: *std.Build, compile_steps: []*std.Build.Step.Compile) void {
-    const release_step = b.step("release", "Build and compress release binaries");
+pub const ArchiveStep = @import("build/ArchiveStep.zig");
 
-    for (compile_steps) |binary| {
-        const target = binary.rootModuleTarget();
-        const is_windows = target.os.tag == .windows;
-        const version = binary.version.?;
+pub fn archiveArtifact(
+    b: *std.Build,
+    artifact: *Compile,
+    options: ArchiveStep.AddArtifactOptions,
+) *ArchiveStep {
+    const target = artifact.rootModuleTarget();
 
-        const binary_name = switch (binary.kind) {
-            .exe => b.fmt("{s}{s}", .{ binary.name, target.exeFileExt() }),
-            .lib => switch (binary.linkage.?) {
-                .static => b.fmt("{s}{s}{s}", .{ target.libPrefix(), binary.name, target.staticLibSuffix() }),
-                .dynamic => b.fmt("{s}{s}{s}", .{ target.libPrefix(), binary.name, target.dynamicLibSuffix() }),
-            },
-            else => quit("Binaries of type '{s}' are unsupported", .{@tagName(binary.kind)}),
-        };
+    var name = std.ArrayList(u8).init(b.allocator);
+    const writer = name.writer();
 
-        const artifact_name = b.fmt("{s}-{s}-{s}-{}.{s}", .{
-            binary.name,
-            @tagName(target.os.tag),
-            @tagName(target.cpu.arch),
-            version,
-            if (is_windows) "zip" else "tar.gz",
-        });
+    writer.print("{s}-{s}-{s}", .{
+        artifact.name,
+        @tagName(target.os.tag),
+        @tagName(target.cpu.arch),
+    }) catch @panic("OOM");
 
-        const cmd = std.Build.Step.Run.create(b, artifact_name);
-        var output: std.Build.LazyPath = undefined;
-
-        if (is_windows) {
-            cmd.addArgs(&.{ "7z", "a" });
-            output = cmd.addOutputFileArg(artifact_name);
-            cmd.addArtifactArg(binary);
-            cmd.addFileArg(binary.getEmittedPdb());
-        } else {
-            cmd.addArgs(&.{ "tar", "caf" });
-            output = cmd.addOutputFileArg(artifact_name);
-            cmd.addPrefixedDirectoryArg("-C", binary.getEmittedBinDirectory());
-            cmd.addArg(binary_name);
-        }
-
-        const install = b.addInstallFileWithDir(output, .{ .custom = "release" }, artifact_name);
-        release_step.dependOn(&install.step);
+    if (artifact.version) |version| {
+        writer.print("-{}", .{version}) catch @panic("OOM");
     }
+
+    const archive = ArchiveStep.create(b, .{
+        .name = name.items,
+        .format = switch (target.os.tag) {
+            .windows => .{ .zip = .{ .level = .best } },
+            else => .{ .tar_gz = .{ .level = .best } },
+        },
+    });
+    archive.addArtifact(artifact, options);
+    return archive;
+}
+
+pub const ArchiveInstallOptions = struct {
+    install_dir: std.Build.InstallDir = .prefix,
+    install_step: ?*std.Build.Step = null,
+    archive_layout: ArchiveStep.AddArtifactOptions = .{},
+};
+
+pub fn installArchivedArtifact(
+    artifact: *Compile,
+    options: ArchiveInstallOptions,
+) void {
+    const b = artifact.step.owner;
+    const archive = archiveArtifact(b, artifact, options.archive_layout);
+    const install = b.addInstallFileWithDir(
+        archive.getEmittedArchive(),
+        options.install_dir,
+        archive.getArchiveFileName(),
+    );
+    const step = options.install_step orelse b.getInstallStep();
+    step.dependOn(&install.step);
 }
 
 pub fn getBuildVersion(b: *std.Build) std.SemanticVersion {
